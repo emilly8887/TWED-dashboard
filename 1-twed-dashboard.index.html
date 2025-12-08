@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TWED - Threat Weapon Early Detection</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { 
+            margin: 0; 
+            overflow-x: hidden;
+            background: #111827;
+            padding-bottom: 80px;
+        }
+        .camera-box {
+            transition: all 0.3s ease;
+        }
+        .camera-box:hover {
+            transform: scale(1.02);
+        }
+        .alert-pulse {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        @keyframes bbox-pulse {
+            0%, 100% { 
+                border-color: #ef4444;
+                box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+            }
+            50% { 
+                border-color: #dc2626;
+                box-shadow: 0 0 20px rgba(239, 68, 68, 0.8);
+            }
+        }
+        .slider-toggle::before {
+            content: "";
+            position: absolute;
+            height: 20px;
+            width: 20px;
+            left: 2px;
+            bottom: 2px;
+            background-color: white;
+            transition: 0.4s;
+            border-radius: 50%;
+        }
+        input:checked + .slider-toggle::before {
+            transform: translateX(24px);
+        }
+        input:checked + .slider-toggle {
+            opacity: 1;
+        }
+        input:not(:checked) + .slider-toggle {
+            opacity: 0.5;
+            background-color: #4b5563 !important;
+        }
+        .video-library-item {
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        .video-library-item:hover {
+            transform: scale(1.05);
+            border-color: #3b82f6;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white">
+    
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6 bg-gray-800 p-4 shadow-lg">
+        <div class="flex items-center gap-3">
+            <div class="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center">
+                <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                </svg>
+            </div>
+            <div>
+                <h1 class="text-3xl font-bold">TWED</h1>
+                <p class="text-xs text-gray-400">Threat Weapon Early Detection</p>
+                <span class="text-green-400 text-sm bg-green-900 px-3 py-1 rounded-full font-semibold">SYSTEM ARMED</span>
+            </div>
+        </div>
+        <div class="flex items-center gap-8 text-base">
+            <div>
+                <span class="text-gray-400">Alerts: </span>
+                <span class="text-red-400 font-bold text-xl" id="alertCount">3 Active</span>
+            </div>
+            <div>
+                <span class="text-gray-400">Cameras: </span>
+                <span class="text-green-400 font-bold text-xl">24/24</span>
+            </div>
+            <div class="text-gray-300 font-mono text-lg" id="currentTime"></div>
+        </div>
+    </div>
+
+    <div class="px-4" id="dashboardView">
+        
+        <!-- Threat Level Indicator -->
+        <div class="bg-gradient-to-r border-yellow-500 from-yellow-900 to-gray-900 rounded-xl p-4 shadow-lg mb-4 border-2" id="threatLevelBar">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-12 h-12 rounded-full flex items-center justify-center">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h3 class="text-2xl font-bold text-yellow-400" id="threatLevelText">MODERATE THREAT LEVEL</h3>
+                        <p class="text-sm text-gray-400" id="threatDescription">3 active threats detected - Security alerted</p>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <div class="text-4xl font-bold" id="threatScore">45</div>
+                    <div class="text-xs text-gray-400">Threat Score</div>
+                </div>
+            </div>
+            <div class="mt-3 bg-gray-700 rounded-full h-3 overflow-hidden">
+                <div class="h-full transition-all duration-500 bg-gradient-to-r from-yellow-400 to-orange-500" id="threatBar" style="width: 45%;"></div>
+            </div>
+        </div>
+        
+        <!-- Video Player Section -->
+        <div class="bg-gray-800 rounded-xl p-5 shadow-lg mb-4">
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-3">
+                    <svg class="w-7 h-7 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                    </svg>
+                    <h2 class="text-2xl font-bold">Live Feed Analysis</h2>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="toggleVideoLibrary()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-semibold transition">
+                        📁 Video Library
+                    </button>
+                    <input type="file" id="videoUpload" accept="video/*" class="hidden">
+                    <button onclick="document.getElementById('videoUpload').click()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold transition">
+                        Load Video Feed
+                    </button>
+                    <button onclick="toggleBoundingBoxes()" id="bboxToggle" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-semibold transition">
+                        Show Detections
+                    </button>
+                </div>
+            </div>
+
+            <!-- Video Library Panel -->
+            <div id="videoLibraryPanel" class="bg-gray-900 rounded-lg p-4 mb-4 border-2 border-green-500" style="display: none;">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-lg font-bold text-green-400">📁 Stored Videos</h3>
+                    <button onclick="addVideoToLibrary()" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm">
+                        + Add Video
+                    </button>
+                </div>
+                <div id="videoLibraryGrid" class="grid grid-cols-4 gap-3 max-h-48 overflow-y-auto">
+                    <!-- Video library items will be added here -->
+                </div>
+                <input type="file" id="libraryVideoUpload" accept="video/*" class="hidden">
+            </div>
+
+            <div class="bg-black rounded-lg overflow-hidden relative" style="height: 400px;">
+                <video id="videoPlayer" class="w-full h-full object-contain" controls></video>
+                <!-- Bounding boxes overlay -->
+                <div id="boundingBoxesContainer" class="absolute inset-0 pointer-events-none" style="display: none;">
+                    <div class="absolute border-4 border-red-500" style="left: 35%; top: 40%; width: 15%; height: 20%; animation: bbox-pulse 1.5s infinite; box-shadow: 0 0 30px rgba(255, 100, 0, 0.8);">
+                        <div class="absolute -top-14 left-0 bg-gradient-to-r from-red-600 to-orange-600 text-white px-3 py-2 text-xs font-bold rounded shadow-lg">
+                            <div class="font-bold text-sm">🔫 Glock 17 9mm</div>
+                            <div class="text-xs mt-1">🌡️ 36.5°C | Conf: 88%</div>
+                        </div>
+                        <div class="absolute inset-0 bg-gradient-to-br from-red-500/40 via-orange-500/30 to-yellow-500/20"></div>
+                    </div>
+                    <div class="absolute border-4 border-yellow-500" style="left: 25%; top: 15%; width: 30%; height: 70%; animation: bbox-pulse 1.5s infinite;">
+                        <div class="absolute -top-10 left-0 bg-yellow-600 text-white px-2 py-1 text-xs font-bold rounded">
+                            <div>👤 Suspect #1</div>
+                            <div class="text-xs">🌡️ 35.2°C</div>
+                        </div>
+                    </div>
+                    <div class="absolute border-4 border-yellow-500" style="left: 60%; top: 20%; width: 25%; height: 65%; animation: bbox-pulse 1.5s infinite;">
+                        <div class="absolute -top-10 left-0 bg-yellow-600 text-white px-2 py-1 text-xs font-bold rounded">
+                            <div>👤 Suspect #2</div>
+                            <div class="text-xs">🌡️ 34.8°C</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-3 flex items-center justify-between">
+                <div class="text-sm text-gray-400" id="videoStatus">
+                    Click "Load Video Feed" to upload your robbery footage for analysis
+                </div>
+                <button onclick="simulateDetection()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-semibold transition">
+                    Simulate Detection
+                </button>
+            </div>
+            <div class="mt-3 grid grid-cols-3 gap-3">
+                <div class="bg-gray-900 p-3 rounded-lg text-center border border-red-500">
+                    <div class="text-2xl font-bold text-red-400" id="weaponsDetected">1</div>
+                    <div class="text-xs text-gray-400">Weapons Detected</div>
+                </div>
+                <div class="bg-gray-900 p-3 rounded-lg text-center border border-yellow-500">
+                    <div class="text-2xl font-bold text-yellow-400" id="suspectsTracked">2</div>
+                    <div class="text-xs text-gray-400">Suspects Tracked</div>
+                </div>
+                <div class="bg-gray-900 p-3 rounded-lg text-center border border-blue-500">
+                    <div class="text-2xl font-bold text-blue-400" id="analysisAccuracy">88%</div>
+                    <div class="text-xs text-gray-400">Analysis Accuracy</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="grid grid-cols-3 gap-6">
+            <div class="col-span-2">
+                <div class="grid grid-cols-4 gap-4" id="cameraGrid"></div>
+
+                <div class="grid grid-cols-2 gap-4 mt-6">
+                    <div class="bg-gray-800 p-8 rounded-xl text-center shadow-lg">
+                        <div class="text-6xl font-bold text-red-400 mb-2" id="detectionCount">27</div>
+                        <div class="text-gray-400 text-lg mb-2">Detections Today</div>
+                        <div class="text-sm text-gray-500">
+                            <span class="text-green-400 font-semibold" id="detectionPercentage">+12%</span> from yesterday
+                        </div>
+                    </div>
+                    <div class="bg-gray-800 p-8 rounded-xl text-center shadow-lg">
+                        <div class="text-6xl font-bold text-green-400 mb-2" id="systemUptime">98.2%</div>
+                        <div class="text-gray-400 text-lg mb-2">System Uptime</div>
+                        <div class="text-sm text-gray-500">
+                            <span class="text-red-400 font-semibold" id="uptimeChange">-0.3%</span> from last hour
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-gray-800 p-6 rounded-xl shadow-lg mt-4">
+                    <h3 class="text-xl font-bold mb-4 flex items-center gap-2">
+                        <svg class="w-6 h-6 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                        </svg>
+                        Threat Breakdown
+                    </h3>
+                    <div class="space-y-3">
+                        <div>
+                            <div class="flex justify-between text-sm mb-1">
+                                <span class="text-gray-300">🔫 Handguns</span>
+                                <span class="text-red-400 font-bold" id="handgunCount">12 (44%)</span>
+                            </div>
+                            <div class="bg-gray-700 rounded-full h-2">
+                                <div class="bg-red-500 h-2 rounded-full" id="handgunBar" style="width: 44%"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-sm mb-1">
+                                <span class="text-gray-300">🔪 Knives</span>
+                                <span class="text-orange-400 font-bold" id="knifeCount">10 (37%)</span>
+                            </div>
+                            <div class="bg-gray-700 rounded-full h-2">
+                                <div class="bg-orange-500 h-2 rounded-full" id="knifeBar" style="width: 37%"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-sm mb-1">
+                                <span class="text-gray-300">🎯 Rifles</span>
+                                <span class="text-yellow-400 font-bold" id="rifleCount">5 (19%)</span>
+                            </div>
+                            <div class="bg-gray-700 rounded-full h-2">
+                                <div class="bg-yellow-500 h-2 rounded-full" id="rifleBar" style="width: 19%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-gray-800 rounded-xl p-5 shadow-lg">
+                <div class="flex items-center gap-3 mb-5 border-b border-gray-700 pb-3">
+                    <svg class="w-7 h-7 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                    </svg>
+                    <h2 class="text-2xl font-bold">Active Alerts (<span id="alertCountSidebar">3</span>)</h2>
+                </div>
+
+                <div id="alertsContainer" class="space-y-4 max-h-96 overflow-y-auto"></div>
+                
+                <div class="mt-4 bg-gray-900 rounded-lg p-4 border border-gray-700">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm text-gray-400">Avg Response Time</span>
+                        <span class="text-lg font-bold text-blue-400" id="responseTime">2.3s</span>
+                    </div>
+                    <div class="text-xs text-gray-500">Last updated: <span id="lastUpdate">Just now</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Analytics View -->
+    <div class="px-4" id="analyticsView" style="display: none;">
+        <div class="bg-gray-800 rounded-xl p-6 shadow-lg mb-6">
+            <h2 class="text-3xl font-bold mb-6 flex items-center gap-3">
+                <svg class="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                </svg>
+                Analytics Dashboard
+            </h2>
+
+            <div class="grid grid-cols-4 gap-4 mb-6">
+                <div class="bg-gray-900 p-6 rounded-lg text-center border-2 border-blue-500">
+                    <div class="text-4xl font-bold text-blue-400 mb-2" id="totalDetections">27</div>
+                    <div class="text-sm text-gray-400">Total Detections</div>
+                    <div class="text-xs text-green-400 mt-1">Today</div>
+                </div>
+                <div class="bg-gray-900 p-6 rounded-lg text-center border-2 border-red-500">
+                    <div class="text-4xl font-bold text-red-400 mb-2" id="activeThreats">3</div>
+                    <div class="text-sm text-gray-400">Active Threats</div>
+                    <div class="text-xs text-red-400 mt-1">Requires Action</div>
+                </div>
+                <div class="bg-gray-900 p-6 rounded-lg text-center border-2 border-yellow-500">
+                    <div class="text-4xl font-bold text-yellow-400 mb-2">156</div>
+                    <div class="text-sm text-gray-400">This Week</div>
+                    <div class="text-xs text-yellow-400 mt-1">+18% from last week</div>
+                </div>
+                <div class="bg-gray-900 p-6 rounded-lg text-center border-2 border-purple-500">
+                    <div class="text-4xl font-bold text-purple-400 mb-2">89%</div>
+                    <div class="text-sm text-gray-400">Accuracy Rate</div>
+                    <div class="text-xs text-purple-400 mt-1">Last 30 days</div>
+                </div>
+            </div>
+
+            <div class="bg-gray-900 p-6 rounded-lg mb-6">
+                <h3 class="text-xl font-bold mb-4">Detections by Hour (Today)</h3>
+                <div class="flex items-end justify-between h-48 gap-2">
+                    <div class="flex-1 bg-blue-500 rounded-t" style="height: 30%;" title="6 AM - 2 detections"></div>
+                    <div class="flex-1 bg-blue-500 rounded-t" style="height: 45%;" title="7 AM - 3 detections"></div>
+                    <div class="flex-1 bg-blue-500 rounded-t" style="height: 25%;" title="8 AM - 2 detections"></div>
+                    <div class="flex-1 bg-blue-500 rounded-t" style="height: 60%;" title="9 AM - 4 detections"></div>
+                    <div class="flex-1 bg-blue-500 rounded-t" style="height: 50%;" title="10 AM - 3 detections"></div>
+                    <div class="flex-1 bg-blue-500 rounded-t" style="height: 70%;" title="11 AM - 5 detections"></div>
+                    <div class="flex-1 bg-red-500 rounded-t" style="height: 85%;" title="12 PM - 6 detections"></div>
+                    <div class="flex-1 bg-red-500 rounded-t" style="height: 40%;" title="1 PM - 3 detections"></div>
+                </div>
+                <div class="flex justify-between mt-2 text-xs text-gray-500">
+                    <span>6AM</span><span>7AM</span><span>8AM</span><span>9AM</span><span>10AM</span><span>11AM</span><span>12PM</span><span>1PM</span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-6">
+                <div class="bg-gray-900 p-6 rounded-lg">
+                    <h3 class="text-xl font-bold mb-4">Top Threat Locations</h3>
+                    <div class="space-y-3">
+                        <div>
+                            <div class="flex justify-between mb-1">
+                                <span class="text-gray-300">Main Entrance</span>
+                                <span class="text-red-400 font-bold">8 threats</span>
+                            </div>
+                            <div class="bg-gray-700 rounded-full h-2">
+                                <div class="bg-red-500 h-2 rounded-full" style="width: 80%"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between mb-1">
+                                <span class="text-gray-300">Gate A</span>
+                                <span class="text-orange-400 font-bold">6 threats</span>
+                            </div>
+                            <div class="bg-gray-700 rounded-full h-2">
+                                <div class="bg-orange-500 h-2 rounded-full" style="width: 60%"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="flex justify-between mb-1">
+                                <span class="text-gray-300">Parking Lot</span>
+                                <span class="text-yellow-400 font-bold">5 threats</span>
+                            </div>
+                            <div class="bg-gray-700 rounded-full h-2">
+                                <div class="bg-yellow-500 h-2 rounded-full" style="width: 50%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-gray-900 p-6 rounded-lg">
+                    <h3 class="text-xl font-bold mb-4">Response Performance</h3>
+                    <div class="space-y-4">
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-300">Avg Response Time</span>
+                            <span class="text-blue-400 font-bold text-xl">2.3s</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-300">False Positive Rate</span>
+                            <span class="text-green-400 font-bold text-xl">11%</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-300">Alerts Acknowledged</span>
+                            <span class="text-purple-400 font-bold text-xl">94%</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-300">System Uptime</span>
+                            <span class="text-green-400 font-bold text-xl">98.2%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings View -->
+    <div class="px-4" id="settingsView" style="display: none;">
+        <div class="bg-gray-800 rounded-xl p-6 shadow-lg mb-6">
+            <h2 class="text-3xl font-bold mb-6 flex items-center gap-3">
+                <svg class="w-8 h-8 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
+                System Settings
+            </h2>
+
+            <div class="grid grid-cols-2 gap-6">
+                <div class="bg-gray-900 p-6 rounded-lg">
+                    <h3 class="text-xl font-bold mb-4 text-blue-400">Detection Settings</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="text-sm text-gray-400 block mb-2">Confidence Threshold</label>
+                            <input type="range" min="50" max="95" value="75" id="confidenceSlider" oninput="updateConfidence(this.value)" class="w-full">
+                            <div class="text-xs text-gray-500 mt-1">Current: <span id="confidenceValue">75</span>%</div>
+                        </div>
+                        <div>
+                            <label class="text-sm text-gray-400 block mb-2">Detection Sensitivity</label>
+                            <select class="w-full bg-gray-800 text-white p-2 rounded border border-gray-700" onchange="showNotification('✅ Sensitivity updated to ' + this.value)">
+                                <option>High</option>
+                                <option selected>Medium</option>
+                                <option>Low</option>
+                            </select>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm text-gray-400">Auto-Alert Authorities</span>
+                            <label class="relative inline-block w-12 h-6 cursor-pointer">
+                                <input type="checkbox" checked onchange="toggleAutoAlert(this)" class="opacity-0 w-0 h-0">
+                                <span class="absolute inset-0 bg-blue-600 rounded-full transition slider-toggle"></span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-gray-900 p-6 rounded-lg">
+                    <h3 class="text-xl font-bold mb-4 text-red-400">Alert Settings</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="text-sm text-gray-400 block mb-2">Notification Email</label>
+                            <input type="email" id="emailInput" value="emillynakimbugwe@gmail.com" onchange="updateEmail(this.value)" class="w-full bg-gray-800 text-white p-2 rounded border border-gray-700 focus:border-red-500 focus:outline-none" placeholder="your@email.com">
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm text-gray-400">Sound Alerts</span>
+                            <label class="relative inline-block w-12 h-6 cursor-pointer">
+                                <input type="checkbox" checked id="soundToggle" onchange="toggleSound(this)" class="opacity-0 w-0 h-0">
+                                <span class="absolute inset-0 bg-red-600 rounded-full transition slider-toggle"></span>
+                            </label>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm text-gray-400">Email Notifications</span>
+                            <label class="relative inline-block w-12 h-6 cursor-pointer">
+                                <input type="checkbox" checked id="emailToggle" onchange="toggleEmail(this)" class="opacity-0 w-0 h-0">
+                                <span class="absolute inset-0 bg-red-600 rounded-full transition slider-toggle"></span>
+                            </label>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm text-gray-400">SMS Alerts</span>
+                            <label class="relative inline-block w-12 h-6 cursor-pointer">
+                                <input type="checkbox" id="smsToggle" onchange="toggleSMS(this)" class="opacity-0 w-0 h-0">
+                                <span class="absolute inset-0 bg-gray-600 rounded-full transition slider-toggle"></span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-gray-900 p-6 rounded-lg">
+                    <h3 class="text-xl font-bold mb-4 text-green-400">Camera Settings</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="text-sm text-gray-400 block mb-2">Active Cameras</label>
+                            <div class="text-2xl font-bold text-green-400">24 / 24</div>
+                        </div>
+                        <div>
+                            <label class="text-sm text-gray-400 block mb-2">Recording Quality</label>
+                            <select class="w-full bg-gray-800 text-white p-2 rounded border border-gray-700" onchange="showNotification('✅ Quality set to ' + this.value)">
+                                <option>4K Ultra</option>
+                                <option selected>1080p HD</option>
+                                <option>720p</option>
+                            </select>
+                        </div>
+                        <button onclick="restartCameras()" class="w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded transition">
+                            Restart All Cameras
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-gray-900 p-6 rounded-lg">
+                    <h3 class="text-xl font-bold mb-4 text-purple-400">System Information</h3>
+                    <div class="space-y-3 text-sm">
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">System Version</span>
+                            <span class="text-white font-bold">TWED v2.1.0</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">Last Update</span>
+                            <span class="text-white">Dec 06, 2025</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">AI Model</span>
+                            <span class="text-white">YOLOv8</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-400">Database</span>
+                            <span class="text-green-400">Connected</span>
+                        </div>
+                        <button onclick="exportLogs()" class="w-full bg-purple-600 hover:bg-purple-700 text-white py-2 rounded mt-3 transition">
+                            Export System Logs
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom Navigation -->
+    <div class="fixed bottom-0 left-0 right-0 bg-gray-800 border-t-2 border-gray-700 p-4 flex justify-around shadow-lg">
+        <button onclick="switchView('dashboard')" id="dashboardBtn" class="flex items-center gap-2 text-white transition">
+            <div class="grid grid-cols-2 gap-1">
+                <div class="w-2 h-2 bg-blue-400 rounded"></div>
+                <div class="w-2 h-2 bg-blue-400 rounded"></div>
+                <div class="w-2 h-2 bg-blue-400 rounded"></div>
+                <div class="w-2 h-2 bg-blue-400 rounded"></div>
+            </div>
+            <span class="font-semibold">Dashboard</span>
+        </button>
+        <button onclick="switchView('analytics')" id="analyticsBtn" class="flex items-center gap-2 text-gray-300 hover:text-white transition">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+            </svg>
+            <span class="font-semibold">Analytics</span>
+        </button>
+        <button onclick="switchView('settings')" id="settingsBtn" class="flex items-center gap-2 text-gray-300 hover:text-white transition">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+            <span class="font-semibold">Settings</span>
+        </button>
+    </div>
+
+    <script>
+        const cameras = [
+            { id: 1, name: 'Cam 01', location: 'Main Entrance', alert: 'Knife', confidence: 92 },
+            { id: 2, name: 'Cam 02', location: 'Lobby Area', alert: null, confidence: 0 },
+            { id: 3, name: 'Cam 03', location: 'Gate A', alert: 'Handgun', confidence: 88 },
+            { id: 4, name: 'Cam 04', location: 'Lobby Area', alert: null, confidence: 0 },
+            { id: 5, name: 'Cam 05', location: 'Back Exit', alert: null, confidence: 0 },
+            { id: 6, name: 'Cam 06', location: 'Parking Lot', alert: 'Rifle', confidence: 79 },
+            { id: 7, name: 'Cam 07', location: 'Lobby Area', alert: null, confidence: 0 },
+            { id: 8, name: 'Cam 08', location: 'Side Gate', alert: null, confidence: 0 }
+        ];
+
+        let alerts = [
+            { id: 1, time: '14:22:51', weapon: 'Handgun', confidence: 88, camera: 'Camera 03', location: 'Gate A' },
+            { id: 2, time: '14:22:12', weapon: 'Knife', confidence: 92, camera: 'Camera 01', location: 'Main Entrance' },
+            { id: 3, time: '14:19:05', weapon: 'Rifle', confidence: 79, camera: 'Camera 06', location: 'Parking Lot' }
+        ];
+        
+        const originalAlerts = [...alerts];
+        let detectionCount = 27, systemUptime = 98.2, detectionPercentage = 12, uptimeChange = -0.3;
+        let handgunCount = 12, knifeCount = 10, rifleCount = 5, responseTime = 2.3;
+        let weaponsDetected = 1, suspectsTracked = 2, analysisAccuracy = 88, bboxVisible = false;
+        let detectionId = 4;
+        let soundAlertsEnabled = true, emailNotificationsEnabled = true, smsAlertsEnabled = false;
+        let confidenceThreshold = 75, userEmail = 'emillynakimbugwe@gmail.com';
+        let videoLibrary = [];
+        
+        const weaponDatabase = {
+            'Handgun': [
+                { model: 'Glock 17 9mm', temp: 36.5, serial: 'GL-' },
+                { model: 'Desert Eagle .50', temp: 38.2, serial: 'DE-' },
+                { model: 'Beretta 92FS', temp: 35.8, serial: 'BR-' },
+                { model: 'SIG Sauer P226', temp: 37.1, serial: 'SG-' }
+            ],
+            'Rifle': [
+                { model: 'AK-47 Assault Rifle', temp: 42.3, serial: 'AK-' },
+                { model: 'AR-15 5.56mm', temp: 40.5, serial: 'AR-' },
+                { model: 'M16A4 Rifle', temp: 41.8, serial: 'M16-' },
+                { model: 'Sniper Rifle .308', temp: 39.2, serial: 'SR-' }
+            ],
+            'Knife': [
+                { model: 'Combat Knife 8-inch', temp: 32.1, serial: 'CK-' },
+                { model: 'Tactical Blade 10-inch', temp: 31.5, serial: 'TB-' },
+                { model: 'Machete 16-inch', temp: 30.8, serial: 'MC-' }
+            ]
+        };
+
+        // Video Library Functions
+        function toggleVideoLibrary() {
+            const panel = document.getElementById('videoLibraryPanel');
+            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+            if (panel.style.display === 'block') renderVideoLibrary();
+        }
+
+        function addVideoToLibrary() {
+            document.getElementById('libraryVideoUpload').click();
+        }
+
+        document.getElementById('libraryVideoUpload').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const videoURL = URL.createObjectURL(file);
+                videoLibrary.push({ name: file.name, url: videoURL, file: file });
+                renderVideoLibrary();
+                showNotification('✅ Video added to library!');
+            }
+        });
+
+        function renderVideoLibrary() {
+            const grid = document.getElementById('videoLibraryGrid');
+            if (videoLibrary.length === 0) {
+                grid.innerHTML = '<div class="col-span-4 text-center text-gray-500 py-4">No videos in library. Click "+ Add Video" to upload.</div>';
+                return;
+            }
+            grid.innerHTML = videoLibrary.map((video, index) => `
+                <div class="video-library-item bg-gray-800 border-2 border-gray-700 rounded-lg p-3 text-center" onclick="loadVideoFromLibrary(${index})">
+                    <div class="text-3xl mb-2">🎬</div>
+                    <div class="text-xs text-gray-300 truncate">${video.name.substring(0, 15)}...</div>
+                </div>
+            `).join('');
+        }
+
+        function loadVideoFromLibrary(index) {
+            const video = videoLibrary[index];
+            const videoPlayer = document.getElementById('videoPlayer');
+            videoPlayer.src = video.url;
+            videoPlayer.load();
+            videoPlayer.play();
+            document.getElementById('videoStatus').textContent = `Playing: ${video.name} - TWED analyzing...`;
+            toggleVideoLibrary();
+            setTimeout(() => {
+                bboxVisible = true;
+                document.getElementById('boundingBoxesContainer').style.display = 'block';
+                document.getElementById('bboxToggle').textContent = 'Hide Detections';
+            }, 2000);
+        }
+
+        function updateTime() {
+            document.getElementById('currentTime').textContent = new Date().toLocaleTimeString('en-US');
+        }
+        setInterval(updateTime, 1000);
+        updateTime();
+
+        function renderCameras() {
+            document.getElementById('cameraGrid').innerHTML = cameras.map(cam => `
+                <div class="camera-box bg-gray-800 rounded-lg p-4 border-2 ${cam.alert ? 'border-red-500 alert-pulse' : 'border-gray-700'} cursor-pointer hover:border-blue-500 transition" onclick="openCameraFeed(${cam.id})">
+                    ${cam.alert ? `<div class="bg-red-600 text-white px-2 py-1 rounded text-xs font-bold mb-2">${cam.alert} ${cam.confidence}%</div>` : ''}
+                    <div class="flex items-center justify-center h-32 bg-gray-700 rounded mb-3 relative overflow-hidden">
+                        <div class="absolute inset-0 opacity-20" style="background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.03) 2px, rgba(255,255,255,0.03) 4px);"></div>
+                        <div class="absolute top-1 left-1 text-xs text-green-400 font-mono">REC ●</div>
+                        <div class="absolute bottom-1 right-1 text-xs text-gray-500 font-mono">${new Date().toLocaleTimeString()}</div>
+                        <svg class="w-16 h-16 text-gray-500 relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                        </svg>
+                        ${cam.alert ? '<div class="absolute inset-0 border-2 border-red-500 animate-pulse"></div>' : ''}
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="font-bold text-lg">${cam.name}</span>
+                        <span class="text-xs text-gray-400">${cam.location}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderAlerts() {
+            const container = document.getElementById('alertsContainer');
+            if (alerts.length === 0) {
+                container.innerHTML = '<div class="text-center text-gray-500 py-8">No active alerts</div>';
+                document.getElementById('alertCount').textContent = '0 Active';
+                document.getElementById('alertCountSidebar').textContent = '0';
+                return;
+            }
+            container.innerHTML = alerts.map(alert => `
+                <div class="bg-red-950 border border-red-600 rounded-lg p-4 alert-pulse">
+                    <div class="text-xs text-gray-400 mb-1">${alert.time}</div>
+                    <div class="text-lg font-bold mb-1">${alert.weapon} Detected (${alert.confidence}%)</div>
+                    <div class="text-sm text-gray-300 mb-3">${alert.camera} → ${alert.location}</div>
+                    <div class="flex gap-2">
+                        <button onclick="acknowledgeAlert(${alert.id})" class="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 px-3 rounded text-sm font-semibold transition">Acknowledge</button>
+                        <button onclick="falsePositive(${alert.id})" class="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-2 px-3 rounded text-sm font-semibold transition">False</button>
+                    </div>
+                </div>
+            `).join('');
+            document.getElementById('alertCount').textContent = `${alerts.length} Active`;
+            document.getElementById('alertCountSidebar').textContent = alerts.length;
+        }
+
+        function acknowledgeAlert(id) {
+            alerts = alerts.filter(alert => alert.id !== id);
+            renderAlerts();
+            updateThreatLevel();
+        }
+
+        function falsePositive(id) {
+            alerts = alerts.filter(alert => alert.id !== id);
+            renderAlerts();
+            updateThreatLevel();
+        }
+        
+        function updateThreatLevel() {
+            const alertCount = alerts.length;
+            let level, color, bgColor, barColor, threatScore;
+            if (alertCount <= 2) {
+                level = 'LOW THREAT LEVEL'; color = 'text-green-400';
+                bgColor = 'border-green-500 from-green-900 to-gray-900';
+                barColor = 'linear-gradient(90deg, #10b981, #059669)';
+                threatScore = 25;
+            } else if (alertCount <= 4) {
+                level = 'MODERATE THREAT LEVEL'; color = 'text-yellow-400';
+                bgColor = 'border-yellow-500 from-yellow-900 to-gray-900';
+                barColor = 'linear-gradient(90deg, #fbbf24, #f59e0b)';
+                threatScore = 45 + (alertCount - 3) * 10;
+            } else {
+                level = 'HIGH THREAT LEVEL'; color = 'text-red-400';
+                bgColor = 'border-red-500 from-red-900 to-gray-900';
+                barColor = 'linear-gradient(90deg, #ef4444, #dc2626)';
+                threatScore = 75 + (alertCount - 5) * 8;
+            }
+            document.getElementById('threatLevelText').textContent = level;
+            document.getElementById('threatLevelText').className = `text-2xl font-bold ${color}`;
+            document.getElementById('threatDescription').textContent = `${alertCount} active threat${alertCount !== 1 ? 's' : ''} detected - ${alertCount > 4 ? 'Emergency response required!' : alertCount > 2 ? 'Security alerted' : 'System monitoring'}`;
+            document.getElementById('threatScore').textContent = Math.min(100, threatScore);
+            document.getElementById('threatBar').style.width = Math.min(100, threatScore) + '%';
+            document.getElementById('threatBar').style.background = barColor;
+            document.getElementById('threatLevelBar').className = `bg-gradient-to-r ${bgColor} rounded-xl p-4 shadow-lg mb-4 border-2`;
+        }
+
+        function updateWeaponBreakdown() {
+            const total = handgunCount + knifeCount + rifleCount;
+            const handgunPercent = Math.round((handgunCount / total) * 100);
+            const knifePercent = Math.round((knifeCount / total) * 100);
+            const riflePercent = Math.round((rifleCount / total) * 100);
+            document.getElementById('handgunCount').textContent = `${handgunCount} (${handgunPercent}%)`;
+            document.getElementById('knifeCount').textContent = `${knifeCount} (${knifePercent}%)`;
+            document.getElementById('rifleCount').textContent = `${rifleCount} (${riflePercent}%)`;
+            document.getElementById('handgunBar').style.width = handgunPercent + '%';
+            document.getElementById('knifeBar').style.width = knifePercent + '%';
+            document.getElementById('rifleBar').style.width = riflePercent + '%';
+        }
+
+        function simulateDetection() {
+            const weapons = ['Handgun', 'Knife', 'Rifle'];
+            const availableCameras = cameras.filter(c => !c.alert);
+            if (availableCameras.length === 0) { alert('All cameras detecting threats! Press R to reset.'); return; }
+            const randomWeapon = weapons[Math.floor(Math.random() * weapons.length)];
+            const randomCam = availableCameras[Math.floor(Math.random() * availableCameras.length)];
+            const randomConfidence = Math.floor(Math.random() * (95 - 75) + 75);
+            cameras.find(c => c.id === randomCam.id).alert = randomWeapon;
+            cameras.find(c => c.id === randomCam.id).confidence = randomConfidence;
+            alerts.unshift({
+                id: detectionId++, time: new Date().toTimeString().split(' ')[0].slice(0, 8),
+                weapon: randomWeapon, confidence: randomConfidence, camera: randomCam.name, location: randomCam.location
+            });
+            if (alerts.length > 6) alerts = alerts.slice(0, 6);
+            detectionCount++; detectionPercentage += 2;
+            systemUptime = Math.max(95.0, systemUptime - 0.1); uptimeChange -= 0.1;
+            if (randomWeapon === 'Handgun') handgunCount++;
+            else if (randomWeapon === 'Knife') knifeCount++;
+            else if (randomWeapon === 'Rifle') rifleCount++;
+            weaponsDetected++; suspectsTracked = Math.min(10, suspectsTracked + 1);
+            analysisAccuracy = Math.max(75, analysisAccuracy - 1); responseTime += 0.2;
+            document.getElementById('detectionCount').textContent = detectionCount;
+            document.getElementById('detectionPercentage').textContent = `+${detectionPercentage}%`;
+            document.getElementById('systemUptime').textContent = systemUptime.toFixed(1) + '%';
+            document.getElementById('uptimeChange').textContent = uptimeChange.toFixed(1) + '%';
+            document.getElementById('weaponsDetected').textContent = weaponsDetected;
+            document.getElementById('suspectsTracked').textContent = suspectsTracked;
+            document.getElementById('analysisAccuracy').textContent = analysisAccuracy + '%';
+            document.getElementById('responseTime').textContent = responseTime.toFixed(1) + 's';
+            document.getElementById('videoStatus').innerHTML = `<span class="text-red-500 font-bold">⚠️ THREAT DETECTED!</span> ${randomWeapon} at ${randomCam.name} - ${randomCam.location}`;
+            renderCameras(); renderAlerts(); updateWeaponBreakdown(); updateThreatLevel();
+            if (soundAlertsEnabled) playAlertSound();
+            if (emailNotificationsEnabled) showNotification(`📧 Email sent to ${userEmail}`);
+            if (smsAlertsEnabled) showNotification('📱 SMS sent to +256-XXX-XXXX');
+        }
+        
+        function playAlertSound() {
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioContext.createOscillator(), gainNode = audioContext.createGain();
+                oscillator.connect(gainNode); gainNode.connect(audioContext.destination);
+                oscillator.frequency.value = 800; oscillator.type = 'sine';
+                gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+                oscillator.start(audioContext.currentTime); oscillator.stop(audioContext.currentTime + 0.5);
+            } catch (e) {}
+        }
+        
+        function showNotification(message) {
+            const notification = document.createElement('div');
+            notification.className = 'fixed top-20 right-4 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-pulse';
+            notification.innerHTML = message;
+            document.body.appendChild(notification);
+            setTimeout(() => notification.remove(), 4000);
+        }
+
+        function resetAlerts() {
+            alerts = [...originalAlerts];
+            cameras[0].alert = 'Knife'; cameras[0].confidence = 92;
+            cameras[2].alert = 'Handgun'; cameras[2].confidence = 88;
+            cameras[5].alert = 'Rifle'; cameras[5].confidence = 79;
+            cameras[1].alert = null; cameras[3].alert = null; cameras[4].alert = null; cameras[6].alert = null; cameras[7].alert = null;
+            detectionCount = 27; systemUptime = 98.2; detectionPercentage = 12; uptimeChange = -0.3;
+            handgunCount = 12; knifeCount = 10; rifleCount = 5; responseTime = 2.3;
+            weaponsDetected = 1; suspectsTracked = 2; analysisAccuracy = 88;
+            document.getElementById('detectionCount').textContent = detectionCount;
+            document.getElementById('systemUptime').textContent = systemUptime.toFixed(1) + '%';
+            document.getElementById('detectionPercentage').textContent = `+${detectionPercentage}%`;
+            document.getElementById('uptimeChange').textContent = uptimeChange.toFixed(1) + '%';
+            document.getElementById('responseTime').textContent = responseTime.toFixed(1) + 's';
+            document.getElementById('weaponsDetected').textContent = weaponsDetected;
+            document.getElementById('suspectsTracked').textContent = suspectsTracked;
+            document.getElementById('analysisAccuracy').textContent = analysisAccuracy + '%';
+            renderCameras(); renderAlerts(); updateWeaponBreakdown();
+            alert('System reset! All alerts restored.');
+        }
+
+        document.addEventListener('keydown', e => { if (e.key === 'r' || e.key === 'R') resetAlerts(); });
+
+        document.getElementById('videoUpload').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const videoPlayer = document.getElementById('videoPlayer');
+                const videoURL = URL.createObjectURL(file);
+                videoPlayer.src = videoURL; videoPlayer.load(); videoPlayer.play();
+                document.getElementById('videoStatus').textContent = `Playing: ${file.name} - TWED analyzing...`;
+                setTimeout(() => {
+                    bboxVisible = true;
+                    document.getElementById('boundingBoxesContainer').style.display = 'block';
+                    document.getElementById('bboxToggle').textContent = 'Hide Detections';
+                }, 2000);
+            }
+        });
+
+        function toggleBoundingBoxes() {
+            bboxVisible = !bboxVisible;
+            document.getElementById('boundingBoxesContainer').style.display = bboxVisible ? 'block' : 'none';
+            document.getElementById('bboxToggle').textContent = bboxVisible ? 'Hide Detections' : 'Show Detections';
+        }
+
+        function openCameraFeed(cameraId) {
+            const camera = cameras.find(c => c.id === cameraId);
+            const videoPlayer = document.getElementById('videoPlayer');
+            if (videoPlayer.src) {
+                videoPlayer.scrollIntoView({ behavior: 'smooth' }); videoPlayer.play();
+                alert(`Viewing ${camera.name} - ${camera.location}`);
+            } else {
+                alert(`${camera.name} - ${camera.location}\n\nClick "Load Video Feed" first to upload footage.`);
+            }
+        }
+
+        renderCameras(); renderAlerts(); updateWeaponBreakdown(); updateThreatLevel();
+
+        function switchView(view) {
+            document.getElementById('dashboardView').style.display = 'none';
+            document.getElementById('analyticsView').style.display = 'none';
+            document.getElementById('settingsView').style.display = 'none';
+            document.getElementById('dashboardBtn').className = 'flex items-center gap-2 text-gray-300 hover:text-white transition';
+            document.getElementById('analyticsBtn').className = 'flex items-center gap-2 text-gray-300 hover:text-white transition';
+            document.getElementById('settingsBtn').className = 'flex items-center gap-2 text-gray-300 hover:text-white transition';
+            if (view === 'dashboard') {
+                document.getElementById('dashboardView').style.display = 'block';
+                document.getElementById('dashboardBtn').className = 'flex items-center gap-2 text-white transition';
+            } else if (view === 'analytics') {
+                document.getElementById('analyticsView').style.display = 'block';
+                document.getElementById('analyticsBtn').className = 'flex items-center gap-2 text-white transition';
+                document.getElementById('totalDetections').textContent = detectionCount;
+                document.getElementById('activeThreats').textContent = alerts.length;
+            } else if (view === 'settings') {
+                document.getElementById('settingsView').style.display = 'block';
+                document.getElementById('settingsBtn').className = 'flex items-center gap-2 text-white transition';
+            }
+        }
+        
+        function updateEmail(email) { 
+            userEmail = email; 
+            showNotification(`✅ Email updated to ${email}`); 
+        }
+        
+        function toggleSound(checkbox) {
+            soundAlertsEnabled = checkbox.checked;
+            if (checkbox.checked) { 
+                showNotification('🔊 Sound alerts enabled'); 
+                playAlertSound(); 
+            } else {
+                showNotification('🔇 Sound alerts disabled');
+            }
+        }
+        
+        function toggleEmail(checkbox) {
+            emailNotificationsEnabled = checkbox.checked;
+            showNotification(checkbox.checked ? '📧 Email notifications enabled' : '📧 Email notifications disabled');
+        }
+        
+        function toggleSMS(checkbox) {
+            smsAlertsEnabled = checkbox.checked;
+            showNotification(checkbox.checked ? '📱 SMS alerts enabled' : '📱 SMS alerts disabled');
+        }
+        
+        function updateConfidence(value) {
+            confidenceThreshold = parseInt(value);
+            document.getElementById('confidenceValue').textContent = value;
+            showNotification(`✅ Confidence threshold set to ${value}%`);
+        }
+        
+        function toggleAutoAlert(checkbox) {
+            showNotification(checkbox.checked ? '🚨 Auto-alert authorities enabled' : '🚨 Auto-alert authorities disabled');
+        }
+        
+        function restartCameras() {
+            const button = event.target;
+            button.textContent = 'Restarting...'; 
+            button.disabled = true;
+            showNotification('🔄 Restarting all 24 cameras...');
+            setTimeout(() => {
+                button.textContent = 'Restart All Cameras'; 
+                button.disabled = false;
+                showNotification('✅ All cameras restarted successfully!');
+            }, 2000);
+        }
+        
+        function exportLogs() {
+            showNotification('📥 Downloading system logs...');
+            const logData = `TWED System Logs - ${new Date().toLocaleString()}\n\n` +
+                `Total Detections Today: ${detectionCount}\n` +
+                `Active Threats: ${alerts.length}\n` +
+                `System Uptime: ${systemUptime}%\n` +
+                `Handgun Detections: ${handgunCount}\n` +
+                `Knife Detections: ${knifeCount}\n` +
+                `Rifle Detections: ${rifleCount}\n` +
+                `Response Time: ${responseTime}s\n\n` +
+                `Recent Alerts:\n` +
+                alerts.map(a => `- ${a.time}: ${a.weapon} at ${a.location} (${a.confidence}%)`).join('\n');
+            const blob = new Blob([logData], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `TWED_logs_${new Date().toISOString().slice(0,10)}.txt`;
+            a.click();
+            setTimeout(() => showNotification('✅ Logs exported successfully!'), 500);
+        }
+    </script>
+
+</body>
+</html>
